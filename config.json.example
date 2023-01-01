@@ -1,0 +1,18 @@
+{
+    "discord_token": "yourdiscordtokengoeshere",
+    "lavalink": {
+        "host": "127.0.0.1",
+        "password": "yourpasswordgoeshere"
+    },
+    "punishment": {
+        "channel": "naughty-corner",
+        "songs": [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        ]
+    },
+    "clips": {
+        "goodluck": {
+            "path": "https://www.youtube.com/watch?v=aB2yqeD0Nus"
+        }
+    }
+}
