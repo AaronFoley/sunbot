@@ -12,7 +12,7 @@ PATTERN = re.compile(r"\bi(?:'| +a|’)?m +([\w ]*)", re.IGNORECASE)
 
 @plugin.listener(hikari.GuildMessageCreateEvent)
 async def on_message(event: hikari.GuildMessageCreateEvent):
-    if event.is_bot:
+    if event.is_bot or event.content is None:
         return
 
     if not (match := re.search(PATTERN, event.content)):
