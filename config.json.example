@@ -4,15 +4,13 @@
         "host": "127.0.0.1",
         "password": "yourpasswordgoeshere"
     },
+    "database": {
+        "sqlite+aiosqlite:///example.db",
+    }
     "punishment": {
         "channel": "naughty-corner",
         "songs": [
             "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         ]
-    },
-    "clips": {
-        "goodluck": {
-            "path": "https://www.youtube.com/watch?v=aB2yqeD0Nus"
-        }
     }
 }

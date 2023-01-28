@@ -119,6 +119,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# sqlite DBs
+*.db
+
 # pytype static type analyzer
 .pytype/
 

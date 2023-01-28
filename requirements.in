@@ -1,6 +1,8 @@
 hikari[speedups]
 hikari-lightbulb
-uvloop
+uvloop; os.name != 'nt'
 dataclass-wizard
 lavaplayer
 psutil
+ormar[postgresql,orjson,sqlite]
+alembic

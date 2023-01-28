@@ -9,6 +9,7 @@ from dataclass_wizard import JSONFileWizard
 class LavalinkConfig:
     host: str
     password: str
+    port: int = 2333
 
 
 @dataclass
@@ -18,18 +19,19 @@ class PunishmentConfig:
 
 
 @dataclass
-class ClipConfig:
-    path: str
-    seek: int = 0
+class DatabaseConfig:
+    url: str
 
 
 @dataclass
 class Config(JSONFileWizard):
 
     discord_token: str
-    lavalink: LavalinkConfig
+    database: DatabaseConfig
+
     punishment: PunishmentConfig
-    clips: Dict[str, ClipConfig]
+
+    lavalink: LavalinkConfig = None
 
 
 CONFIG = Config.from_json_file('config.json')
