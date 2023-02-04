@@ -5,6 +5,6 @@
         "password": "yourpasswordgoeshere"
     },
     "database": {
-        "sqlite+aiosqlite:///example.db",
+        "url": "sqlite+aiosqlite:///example.db",
     }
 }
