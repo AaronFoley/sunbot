@@ -24,7 +24,7 @@ async def clip_group(ctx: lightbulb.context.SlashContext):
 @lightbulb.option("seek", "Time in seconds to skip in the clip", type=float, min_value=0, default=0, required=False)
 @lightbulb.option("url", "The URL of the clip")
 @lightbulb.option("name", "The name of the clip to add")
-@lightbulb.command("add", "Adds", pass_options=True, ephemeral=True)
+@lightbulb.command("add", "Adds a new clip", pass_options=True, ephemeral=True)
 @lightbulb.implements(lightbulb.commands.SlashSubCommand)
 async def add_clip(ctx: lightbulb.context.SlashContext, name: str, url: str, seek: float = 0):
     # Workout if a clip with this name already exists

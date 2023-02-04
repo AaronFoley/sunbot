@@ -1,7 +1,6 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import List
 from dataclass_wizard import JSONFileWizard
 
 
@@ -10,12 +9,6 @@ class LavalinkConfig:
     host: str
     password: str
     port: int = 2333
-
-
-@dataclass
-class PunishmentConfig:
-    channel: str
-    songs: List[str]
 
 
 @dataclass
@@ -29,8 +22,7 @@ class Config(JSONFileWizard):
     discord_token: str
     database: DatabaseConfig
 
-    punishment: PunishmentConfig
-
+    default_guilds: List[int] = ()
     lavalink: LavalinkConfig = None
 
 

@@ -14,7 +14,7 @@ bot = lightbulb.BotApp(
     ignore_bots=True,
     prefix=None,
     intents=hikari.Intents.ALL,
-    default_enabled_guilds=[828261508059234354] # TEMP
+    default_enabled_guilds=CONFIG.default_guilds
 )
 
 
@@ -48,6 +48,36 @@ async def voice_state_update(event: hikari.VoiceStateUpdateEvent):
 @bot.listen(hikari.VoiceServerUpdateEvent)
 async def voice_server_update(event: hikari.VoiceServerUpdateEvent):
     await lavalink.raw_voice_server_update(event.guild_id, event.endpoint, event.token)
+
+
+@bot.listen(lightbulb.CommandErrorEvent)
+async def on_command_error(event: lightbulb.CommandErrorEvent) -> None:
+    exc = event.exception
+
+    if isinstance(exc, lightbulb.NotOwner):
+        await event.context.respond(
+           embed=hikari.Embed(
+                description=f"You need to be an owner to do that.",
+                color=hikari.Colour(0xd32f2f)
+            )
+        )
+        return
+    elif isinstance(exc, lightbulb.MissingRequiredPermission):
+        await event.context.respond(
+           embed=hikari.Embed(
+                description=f"You do not have permission to use this command.",
+                color=hikari.Colour(0xd32f2f)
+            )
+        )
+        return
+    
+    await event.context.respond(
+           embed=hikari.Embed(
+                description=f"Something went wrong",
+                color=hikari.Colour(0xd32f2f)
+            )
+        )
+    raise event.exception
 
 
 @bot.listen(hikari.GuildAvailableEvent)
