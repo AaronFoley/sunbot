@@ -27,11 +27,14 @@ lavalink = lavaplayer.LavalinkClient(
 
 
 @bot.listen(hikari.StartedEvent)
-async def on_start(event: hikari.StartedEvent):
+async def on_started(event: hikari.StartedEvent):
     lavalink.set_user_id(bot.get_me().id)
     lavalink.set_event_loop(asyncio.get_event_loop())
     lavalink.connect()
 
+
+@bot.listen(hikari.StartingEvent)
+async def on_starting(event: hikari.StartingEvent):
     await database.connect()
 
 
