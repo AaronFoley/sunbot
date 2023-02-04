@@ -10,4 +10,5 @@ COPY . /usr/src/app
 RUN pip install --no-cache-dir -r requirements.txt
 
 USER app
+ENTRYPOINT ["/usr/app/entrypoint.sh"]
 CMD ["python", "-m", "sunbot"]
