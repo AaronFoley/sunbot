@@ -229,7 +229,6 @@ async def nowplaying_command(ctx: lightbulb.context.Context):
 @lightbulb.command(name="stop", description="Stop command")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def stop_command(ctx: lightbulb.context.Context):
-    await lavalink.destroy(ctx.guild_id)
     await plugin.bot.update_voice_state(ctx.guild_id, None)
     await ctx.respond(hikari.Embed(
         color=hikari.Colour(0x2ECC71)
