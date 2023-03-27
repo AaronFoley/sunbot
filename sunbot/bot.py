@@ -73,6 +73,14 @@ async def on_command_error(event: lightbulb.CommandErrorEvent) -> None:
             )
         )
         return
+    elif isinstance(exc, lightbulb.CommandIsOnCooldown):
+        await event.context.respond(
+           embed=hikari.Embed(
+                description=f"You cannot use the command yet, please wait {exc.retry_after:.0f} seconds.",
+                color=hikari.Colour(0xd32f2f)
+            )
+        )
+        return
     
     await event.context.respond(
            embed=hikari.Embed(

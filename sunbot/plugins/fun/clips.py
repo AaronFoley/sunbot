@@ -48,7 +48,7 @@ async def add_clip(ctx: lightbulb.context.SlashContext, name: str, url: str, see
                 description="No results found for your query",
                 color=hikari.Colour(0xd32f2f)
             )
-        ) 
+        )
     
     result = result[0]
     seek_ms = int(seek * 1000)
