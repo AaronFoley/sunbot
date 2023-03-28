@@ -24,7 +24,9 @@ attrs==22.2.0
     #   aiohttp
     #   hikari
 certifi==2022.12.7
-    # via requests
+    # via
+    #   requests
+    #   sentry-sdk
 charset-normalizer==3.1.0
     # via
     #   aiohttp
@@ -80,6 +82,8 @@ pydantic==1.10.4
     # via ormar
 requests==2.28.2
     # via openai
+sentry-sdk==1.18.0
+    # via -r requirements.in
 sqlalchemy==1.4.41
     # via
     #   alembic
@@ -92,7 +96,9 @@ typing-extensions==4.5.0
     #   alembic
     #   pydantic
 urllib3==1.26.15
-    # via requests
+    # via
+    #   requests
+    #   sentry-sdk
 uvloop==0.17.0 ; os_name != "nt"
     # via -r requirements.in
 yarl==1.8.2

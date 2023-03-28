@@ -57,10 +57,16 @@ class OpenAIConfig:
 
 
 @dataclass
+class SentryConfig:
+    dsn: str = None
+
+
+@dataclass
 class Config(JSONFileWizard):
 
     discord_token: str
     database: DatabaseConfig
+    sentry: SentryConfig
 
     openai: OpenAIConfig = None
 

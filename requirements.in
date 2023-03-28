@@ -7,3 +7,4 @@ psutil
 ormar[postgresql,orjson,sqlite]
 alembic
 openai
+sentry-sdk

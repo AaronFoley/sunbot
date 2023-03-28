@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from collections import defaultdict
 
+import aiohttp
 import hikari
 import lightbulb
 from hikari import Message
@@ -165,9 +166,16 @@ async def genimage(ctx: lightbulb.context.SlashContext, prompt: str, number: int
         )
         return
 
-    for image in images.data:
+    image_data = []
+
+    async with aiohttp.ClientSession() as session:
+        for image in images.data:
+            async with session.get(image['url']) as response:
+                image_data.append(await response.read())
+   
+    for image in image_data:
         msg = await resp.message()
-        attachments = msg.attachments + [image['url']]
+        attachments = msg.attachments + [image]
         await msg.edit(attachments=attachments)
 
     await resp.edit(content="Images Generated!")

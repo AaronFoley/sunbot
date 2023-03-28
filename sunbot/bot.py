@@ -3,6 +3,7 @@ import hikari
 import lavaplayer
 import asyncio
 import lightbulb
+import sentry_sdk
 from lightbulb.ext import tasks
 from sunbot.config import CONFIG
 from sunbot.db.base import database
@@ -36,6 +37,12 @@ async def on_started(event: hikari.StartedEvent):
 @bot.listen(hikari.StartingEvent)
 async def on_starting(event: hikari.StartingEvent):
     await database.connect()
+
+    if CONFIG.sentry and CONFIG.sentry.dsn:
+        sentry_sdk.init(
+            dsn=CONFIG.sentry.dsn,
+            traces_sample_rate=1.0
+        )
 
 
 @bot.listen(hikari.StoppingEvent)
