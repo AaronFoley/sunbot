@@ -31,7 +31,10 @@ class OpenAIConfig:
     """ Holds configuration for the openai module 
         Attributes:
             api_key (str): The API key used for authenticating to the openai API
-            rate_limit (int): Rate limit in seconds applied to openai commands
+            command_cooldown (int): The time in seconds between using AI commands
+            genimage_max_images (int): The maximum images you can ask chatGPT to generate
+            ask_max_tokens (int): The max number of tokens open AI will respond to the ask command
+            ask_completions_model (str): The Completion model to use for the ask command
             auto_min_length (int): The minimum length for automatic responses
             auto_prompt (str): The default prompt to include as context when generating a response
             auto_cooldown (int): The time between auto responses in seconds
@@ -45,6 +48,9 @@ class OpenAIConfig:
 
     api_key: str = None
     command_cooldown: int = 60
+    genimage_max_images: int = 4
+    ask_max_tokens: int = 500
+    ask_completions_model: str = "text-davinci-003"
     auto_min_length: int = 10
     auto_prompt: str = "I want you to act as a user named Sunbot in a Discord server of close friends, respond to the following with only your response, do not include the username:"
     auto_cooldown: int = 600
@@ -66,12 +72,10 @@ class Config(JSONFileWizard):
 
     discord_token: str
     database: DatabaseConfig
-    sentry: SentryConfig
-
+    sentry: SentryConfig = None
     openai: OpenAIConfig = None
-
-    default_guilds: List[int] = ()
     lavalink: LavalinkConfig = None
+    default_guilds: List[int] = ()
 
 
 CONFIG = Config.from_json_file('config.json')

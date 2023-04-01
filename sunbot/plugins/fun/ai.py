@@ -39,7 +39,7 @@ class OpenAiContext:
 
     def reset(self):
         self.target_message = None
-        self.messages = None
+        self.messages = list()
         self.last_context = 0
 
 
@@ -75,7 +75,7 @@ async def auto_repsonse():
             )
             resp = completion.choices[0].text
             await plugin.bot.rest.create_message(octx.target_message.channel_id, resp)
-        except openai.InvalidRequestError as e:
+        except openai.OpenAIError as e:
             logger.exception(f"Failed to automatically respond due to OpenAi Error: {e}")
             pass
 
@@ -123,33 +123,47 @@ async def on_message(event: hikari.GuildMessageCreateEvent):
 @lightbulb.command("askgpt", "Ask a question to OpenAI", pass_options=True)
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def askgpt(ctx: lightbulb.context.SlashContext, prompt: str):
+    embed = hikari.Embed(
+        title=prompt,
+        description="Please wait generating response",
+        color=hikari.Colour(0x2ECC71)
+    ).add_field('Requestor', f"<@{ctx.user.id}>")
+    await ctx.respond(embed=embed)
+
     try:
         completion = await openai.Completion.acreate(
-            model=CONFIG.openai.auto_completions_model,
-            max_tokens=CONFIG.openai.auto_max_tokens,
+            model=CONFIG.openai.ask_completions_model,
+            max_tokens=CONFIG.openai.ask_max_tokens,
             prompt=prompt
         )
-    except openai.InvalidRequestError as e:
-        await ctx.respond(
+    except openai.OpenAIError as e:
+        await ctx.edit_last_response(
            embed=hikari.Embed(
                 description=f"Failed to send request to ChatGPT: {e}",
                 color=hikari.Colour(0xd32f2f)
             )
         )
         return
-    resp = completion.choices[0].text
-    await ctx.respond(resp)
+    
+    embed.description = completion.choices[0].text
+    await ctx.edit_last_response(embed=embed)
 
 
 @plugin.command
 @lightbulb.add_cooldown(CONFIG.openai.command_cooldown, 1, lightbulb.UserBucket)
 @lightbulb.option("size", "The size of the image to generate", default="1024x1024", choices=["256x256", "512x512", "1024x1024"])
-@lightbulb.option("number", "Number of images to generate", default=4, type=int, required=False)
+@lightbulb.option("number", "Number of images to generate", default=4, type=int, required=False, max_value=CONFIG.openai.genimage_max_images)
 @lightbulb.option("prompt", "The Prompt to send to ChatGPT")
 @lightbulb.command("genimage", "Generates an image using OpenAI", pass_options=True)
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def genimage(ctx: lightbulb.context.SlashContext, prompt: str, number: int, size: str):
-    resp = await ctx.respond('Generating images ... please wait')
+    embed = hikari.Embed(
+        title=prompt,
+        description="Please wait generating response",
+        color=hikari.Colour(0x2ECC71),
+        url="https://openai.com"
+    ).add_field('Requestor', f"<@{ctx.user.id}>")
+    resp = await ctx.respond(embed=embed)
 
     try:
         images = await openai.Image.acreate(
@@ -157,8 +171,8 @@ async def genimage(ctx: lightbulb.context.SlashContext, prompt: str, number: int
             prompt=prompt,
             size=size
         )
-    except openai.InvalidRequestError as e:
-        await resp.edit(
+    except openai.OpenAIError as e:
+        await ctx.edit_last_response(
            embed=hikari.Embed(
                 description=f"Failed to generate images: {e}",
                 color=hikari.Colour(0xd32f2f)
@@ -167,18 +181,20 @@ async def genimage(ctx: lightbulb.context.SlashContext, prompt: str, number: int
         return
 
     image_data = []
-
     async with aiohttp.ClientSession() as session:
         for image in images.data:
             async with session.get(image['url']) as response:
                 image_data.append(await response.read())
+
+    await ctx.edit_last_response(embed=None, content="...")
+    embed.description = None
    
     for image in image_data:
         msg = await resp.message()
-        attachments = msg.attachments + [image]
-        await msg.edit(attachments=attachments)
-
-    await resp.edit(content="Images Generated!")
+        embed.set_image(image)
+        embeds = msg.embeds + [embed]
+        await msg.edit(embeds=embeds)
+    await ctx.edit_last_response(content=None)
 
 
 def load(bot: lightbulb.BotApp) -> None:
