@@ -1,12 +1,13 @@
 import lightbulb
 from lightbulb.utils import permissions
 import hikari
-import lavaplayer
+import logging
+import lavaplay
 from datetime import timedelta
 from sunbot.bot import lavalink
 from sunbot.db.models.clip import Clip
 
-
+logger = logging.getLogger(__name__)
 plugin = lightbulb.Plugin("Clips")
 
 
@@ -124,17 +125,17 @@ async def play_clip(ctx: lightbulb.context.SlashContext, name: str):
 
     await ctx.respond(f"Playing clip: {name}")
 
+    player = lavalink.create_player(ctx.guild_id)
     await ctx.bot.update_voice_state(ctx.guild_id, channel_id, self_deaf=True)
-    await lavalink.wait_for_connection(ctx.guild_id)
 
     result = await lavalink.auto_search_tracks(clip.url)
 
-    # Store the track here as we can't get good information from the lavaplayer library
+    # Store the track here as we can't get good information from the lavaplay.py library
     plugin.bot.d.clips_playing[ctx.guild_id] = result[0]
 
-    await lavalink.play(ctx.guild_id, result[0])
+    await player.play(result[0])
     if clip.seek:
-        await lavalink.seek(ctx.guild_id, clip.seek)
+        await player.seek(clip.seek)
 
 
 @clip_group.child
@@ -152,6 +153,9 @@ async def list_clips(ctx: lightbulb.context.SlashContext):
     clip_output = []
     async for clip in clips.iterate():
         clip_output.append(f"🔹[{clip.name}]({clip.url}) ({clip.seek}) [<@{clip.author}>]")
+
+    if not clip_output:
+        clip_output = ['No clips defined']
 
     await ctx.respond(hikari.Embed(
         color=hikari.Colour(0x2ECC71)
@@ -196,8 +200,8 @@ async def delete_clip(ctx: lightbulb.context.SlashContext, name: str):
     )
 
 
-@lavalink.listen(lavaplayer.TrackEndEvent)
-async def track_end_event(event: lavaplayer.TrackEndEvent):
+@lavalink.listen(lavaplay.TrackEndEvent)
+async def track_end_event(event: lavaplay.TrackEndEvent):
 
     if event.guild_id not in plugin.bot.d.clips_playing:
         return
@@ -211,6 +215,11 @@ async def track_end_event(event: lavaplayer.TrackEndEvent):
 
 
 def load(bot: lightbulb.BotApp) -> None:
+
+    if lavalink is None:
+        logger.warning('Not loading Clips plugin as lavalink is not setup')
+        return
+
     bot.add_plugin(plugin)
 
     # Create the in-memory storage of clips playing

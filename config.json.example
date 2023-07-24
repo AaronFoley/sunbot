@@ -6,5 +6,11 @@
     },
     "database": {
         "url": "sqlite+aiosqlite:///example.db",
+    },
+    "openai": {
+        "api_key": "example-api-key-goes-here"
+    },
+    "sentry": {
+        "dsn": "https://example@sentry.com/2"
     }
 }

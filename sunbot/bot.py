@@ -1,9 +1,11 @@
 import os
+import aiohttp
 import hikari
-import lavaplayer
+import lavaplay
 import asyncio
 import lightbulb
 import sentry_sdk
+from typing import Optional
 from lightbulb.ext import tasks
 from sunbot.config import CONFIG
 from sunbot.db.base import database
@@ -19,19 +21,23 @@ bot = lightbulb.BotApp(
 )
 
 
-# TODO: Support lavalink not been available
-lavalink = lavaplayer.LavalinkClient(
-    host=CONFIG.lavalink.host,
-    port=CONFIG.lavalink.port,
-    password=CONFIG.lavalink.password
-)
+lava = lavaplay.Lavalink()
+lavalink: Optional[lavaplay.Node] = None
+if CONFIG.lavalink.host:
+    lavalink: Optional[lavaplay.Node] = lava.create_node(
+        host=CONFIG.lavalink.host,
+        port=CONFIG.lavalink.port,
+        password=CONFIG.lavalink.password,
+        user_id=0
+    )
 
 
 @bot.listen(hikari.StartedEvent)
 async def on_started(event: hikari.StartedEvent):
-    lavalink.set_user_id(bot.get_me().id)
-    lavalink.set_event_loop(asyncio.get_event_loop())
-    lavalink.connect()
+    if lavalink is not None:
+        lavalink.user_id = bot.get_me().id
+        lavalink.set_event_loop(asyncio.get_event_loop())
+        lavalink.connect()
 
 
 @bot.listen(hikari.StartingEvent)
@@ -52,12 +58,20 @@ async def on_stop(event: hikari.StoppingEvent):
 
 @bot.listen(hikari.VoiceStateUpdateEvent)
 async def voice_state_update(event: hikari.VoiceStateUpdateEvent):
-    await lavalink.raw_voice_state_update(event.guild_id, event.state.user_id, event.state.session_id, event.state.channel_id)
+    if lavalink is not None:
+        if player := lavalink.get_player(event.guild_id):
+            # Catch ContentTypeError as the player destroy tries to JSON decode an empty response ...
+            try:
+                await player.raw_voice_state_update(event.state.user_id, event.state.session_id, event.state.channel_id)
+            except aiohttp.client_exceptions.ContentTypeError:
+                pass
 
 
 @bot.listen(hikari.VoiceServerUpdateEvent)
 async def voice_server_update(event: hikari.VoiceServerUpdateEvent):
-    await lavalink.raw_voice_server_update(event.guild_id, event.endpoint, event.token)
+    if lavalink is not None:
+        if player := lavalink.get_player(event.guild_id):
+            await player.raw_voice_server_update(event.endpoint, event.token)
 
 
 @bot.listen(lightbulb.CommandErrorEvent)

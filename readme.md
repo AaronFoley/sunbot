@@ -5,7 +5,7 @@ This bot was written to add some fun to my personl discord server, and it not in
 
 ## Lavalinnk
 
-Music commands are implemented using the [lavaplayer-py](https://github.com/HazemMeqdad/lavaplayer) and require a Lavalink server to run.
+Music commands are implemented using the [lavaplay.py](https://github.com/HazemMeqdad/lavaplay.py/) and require a Lavalink server to run.
 
 You can run a simple lavalink server using docker:
 

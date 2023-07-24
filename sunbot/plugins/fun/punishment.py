@@ -1,13 +1,14 @@
 from typing import Dict, Optional
 import time
+import logging
 import random
 import hikari
 import lightbulb
-import lavaplayer
+import lavaplay
 from sunbot.bot import lavalink
 from sunbot.db.models.punishment import PunishmentConfig, PunishmentSong
 
-
+logger = logging.getLogger(__name__)
 plugin = lightbulb.Plugin("Punishment")
 
 
@@ -239,7 +240,6 @@ async def voice_server_update(event: hikari.VoiceStateUpdateEvent):
         return
 
     voice_state = plugin.bot.cache.get_voice_state(event.guild_id, plugin.bot.get_me().id)
-
     punishments = plugin.bot.d.punishments.get(event.guild_id, {})
     
     # User Entering the punishment channel
@@ -252,13 +252,14 @@ async def voice_server_update(event: hikari.VoiceStateUpdateEvent):
         if not songs:
             return
 
+        player = lavalink.create_player(event.guild_id)
         await plugin.bot.update_voice_state(event.guild_id, config.channel, self_deaf=True)
-        await lavalink.wait_for_connection(event.guild_id)
 
         song: PunishmentSong = random.choice(songs)
         result = await lavalink.auto_search_tracks(song.url)
-        await lavalink.play(event.guild_id, result[0])
-        await lavalink.repeat(event.guild_id, True)
+
+        await player.play(result[0])
+        await player.repeat(True)
 
     # User been punished entering a non-punishment channel
     elif event.state.user_id in punishments:
@@ -280,8 +281,8 @@ async def voice_server_update(event: hikari.VoiceStateUpdateEvent):
                 await plugin.bot.update_voice_state(event.guild_id, None)
 
 
-@lavalink.listen(lavaplayer.TrackEndEvent)
-async def track_end_event(event: lavaplayer.TrackEndEvent):
+@lavalink.listen(lavaplay.TrackEndEvent)
+async def track_end_event(event: lavaplay.TrackEndEvent):
 
     # If we are not in a voice channel
     voice_state = plugin.bot.cache.get_voice_state(event.guild_id, plugin.bot.get_me().id)
@@ -301,14 +302,21 @@ async def track_end_event(event: lavaplayer.TrackEndEvent):
     songs = await PunishmentSong.objects.filter(guild=event.guild_id).all()
     if not songs:
         return
+    
+    player = lavalink.get_player(event.guild_id)
 
     song: PunishmentSong = random.choice(songs)
     result = await lavalink.auto_search_tracks(song.url)
-    await lavalink.play(event.guild_id, result[0])
-    await lavalink.repeat(event.guild_id, True)
+    await player.play(result[0])
+    await player.repeat(True)
     
 
 def load(bot: lightbulb.BotApp) -> None:
+
+    if lavalink is None:
+        logger.warning('Not loading Punishment plugin as lavalink is not setup')
+        return
+
     bot.add_plugin(plugin)
 
     # Setup temp storage of punishments
