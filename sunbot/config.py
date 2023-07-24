@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 from dataclass_wizard import JSONFileWizard
 
@@ -25,6 +25,32 @@ class DatabaseConfig:
     """
     url: str
 
+@dataclass
+class OpenAIAutoResponseConfig:
+    """ Holds configuration for the openai module auto-response
+
+        min_length (int): The minimum length for automatic responses
+        prompt (str): The default prompt to include as context when generating a response
+        cooldown (int): The time between auto responses in seconds
+        trigger_chance (float): The chance that a particuluar message will trigger an auto response
+        pre_context_time (int): Time in seconds to get messages before the selected one
+        context_poll (int): The time to wait for more context messages to come in
+        context_timeout (int): The maximum time we will wait before sending an auto reply
+        completions_model (str): The completion model to use
+        max_tokens (str): The max length of tokens to respond with
+    """
+
+    min_length: int = 10
+    prompt: str = ("I want you to act as a user named Sunbot in a Discord server of close friends, "
+                   "respond to the following with only your response, do not include the username:")
+    cooldown: int = 600
+    trigger_chance: float = 0.2
+    pre_context_time: int = 120
+    context_poll: int = 30
+    context_timeout: int = 120
+    completions_model: str = "text-davinci-003"
+    max_tokens: int = 300
+
 
 @dataclass
 class OpenAIConfig:
@@ -35,32 +61,19 @@ class OpenAIConfig:
             genimage_max_images (int): The maximum images you can ask chatGPT to generate
             ask_max_tokens (int): The max number of tokens open AI will respond to the ask command
             ask_completions_model (str): The Completion model to use for the ask command
-            auto_min_length (int): The minimum length for automatic responses
-            auto_prompt (str): The default prompt to include as context when generating a response
-            auto_cooldown (int): The time between auto responses in seconds
-            auto_trigger_chance (float): The chance that a particuluar message will trigger an auto response
-            auto_pre_context_time (int): Time in seconds to get messages before the selected one
-            auto_context_poll (int): The time to wait for more context messages to come in
-            auto_context_timeout (int): The maximum time we will wait before sending an auto reply
-            auto_completions_model (str): The completion model to use
-            auto_max_tokens (str): The max length of tokens to respond with
     """
 
     api_key: str = None
+    auto: OpenAIAutoResponseConfig = field(default_factory=OpenAIAutoResponseConfig)
     command_cooldown: int = 60
     genimage_max_images: int = 4
     ask_max_tokens: int = 500
     ask_completions_model: str = "text-davinci-003"
-    auto_min_length: int = 10
-    auto_prompt: str = "I want you to act as a user named Sunbot in a Discord server of close friends, respond to the following with only your response, do not include the username:"
-    auto_cooldown: int = 600
-    auto_trigger_chance: float = 0.2
-    auto_pre_context_time: int = 120
-    auto_context_poll: int = 30
-    auto_context_timeout: int = 120
-    auto_completions_model: str = "text-davinci-003"
-    auto_max_tokens: int = 300
-
+    response_context_time:int = 120
+    response_max_tokens: int = 300
+    response_completions_model: str = "text-davinci-003"
+    response_prompt: str = ("I want you to act as a user named Sunbot in a Discord server of close friends, "
+                            "respond to the following conversation that mentions you. Only include your response, do not include the username:")
 
 @dataclass
 class SentryConfig:

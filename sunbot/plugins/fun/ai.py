@@ -56,21 +56,21 @@ async def auto_repsonse():
             return
 
         # If we are below both the timeout and last poll phase then wait some more
-        if now < (octx.last_trigger + CONFIG.openai.auto_context_timeout):
-            if now < (octx.last_context + CONFIG.openai.auto_context_poll):
+        if now < (octx.last_trigger + CONFIG.openai.auto.context_timeout):
+            if now < (octx.last_context + CONFIG.openai.auto.context_poll):
                 return
 
         logger.info(f'Generating reponse to {octx.target_message.id}')
 
-        prompt = CONFIG.openai.auto_prompt
+        prompt = CONFIG.openai.auto.prompt
 
         for msg in octx.messages:
             prompt += f"\n{msg.author.username}: {msg.content}"
 
         try:
             completion = await openai.Completion.acreate(
-                model=CONFIG.openai.auto_completions_model,
-                max_tokens=CONFIG.openai.auto_max_tokens,
+                model=CONFIG.openai.auto.completions_model,
+                max_tokens=CONFIG.openai.auto.max_tokens,
                 prompt=prompt
             )
             resp = completion.choices[0].text
@@ -83,28 +83,37 @@ async def auto_repsonse():
 
 
 @plugin.listener(hikari.GuildMessageCreateEvent)
-async def on_message(event: hikari.GuildMessageCreateEvent):
+async def auto_response_on_message(event: hikari.GuildMessageCreateEvent):
+    """ Handler to listen for messages that could be automatically replied too """
     if event.is_bot or event.content is None:
+        return
+    
+    message: hikari.Message = event.message
+    me: hikari.OwnUser = plugin.bot.get_me()
+    
+    # If this message is a reply to us, or mentions us, then we aren't interested
+    if (message.type == hikari.MessageType.REPLY and message.referenced_message.author.id == me.id) or \
+       (me.id in message.user_mentions_ids):
         return
 
     octx: OpenAiContext = plugin.bot.d.openai[event.guild_id]
     if octx.target_message is None:
-        if len(event.message.content.split()) < CONFIG.openai.auto_min_length:
+        if len(message.content.split()) < CONFIG.openai.auto.min_length:
             return
 
-        if octx.last_trigger > (int(time.time()) - CONFIG.openai.auto_cooldown):
+        if octx.last_trigger > (int(time.time()) - CONFIG.openai.auto.cooldown):
             return
 
-        if not random.random() < CONFIG.openai.auto_trigger_chance:
+        if not random.random() < CONFIG.openai.auto.trigger_chance:
             return
 
-        logger.info(f'Triggered Automatic response on message: {event.message_id}: {event.message.content}')
+        logger.info(f'Triggered Automatic response on message: {event.message_id}: {message.content}')
 
         octx.last_trigger = int(time.time())
         octx.last_context = octx.last_trigger
-        octx.target_message = event.message
+        octx.target_message = message
 
-        cutoff = event.message.created_at - timedelta(seconds=CONFIG.openai.auto_pre_context_time)
+        cutoff = message.created_at - timedelta(seconds=CONFIG.openai.auto.pre_context_time)
         msgs = await plugin.bot.rest.fetch_messages(event.channel_id, after=cutoff)
         octx.messages.extend(msgs)
 
@@ -113,8 +122,53 @@ async def on_message(event: hikari.GuildMessageCreateEvent):
         if event.channel_id != octx.target_message.channel_id:
             return
 
-        octx.messages.append(event.message)
+        octx.messages.append(message)
         octx.last_context = int(time.time())
+
+
+@plugin.listener(hikari.GuildMessageCreateEvent)
+async def on_mention_me(event: hikari.GuildMessageCreateEvent):
+
+    if event.is_bot or event.content is None:
+        return
+    
+    message: hikari.Message = event.message
+    me: hikari.OwnUser = plugin.bot.get_me()
+    
+    # If this message isn't a reply to us, or mentions us, then we aren't interested
+    if (message.type == hikari.MessageType.REPLY and message.referenced_message.author.id != me.id) or \
+       (me.id not in message.user_mentions_ids):
+        return
+
+    # Otherwise let's gather some context and reply to it
+    cufoff = message.created_at - timedelta(seconds=CONFIG.openai.response_context_time)
+    msgs = await plugin.bot.rest.fetch_messages(event.channel_id, after=cufoff)
+
+    prompt = CONFIG.openai.response_prompt
+
+    # Include the original message if it's not included
+    if message.type == hikari.MessageType.REPLY and message.referenced_message is not None and \
+       message.referenced_message not in msgs:
+        prompt += f"\n{message.referenced_message.author.username}: {message.referenced_message}"
+
+    for msg in msgs:
+        # Give openai some context about who's replying to who
+        username_part = f"{msg.author.username}"
+        if msg.type == hikari.MessageType.REPLY and msg.referenced_message is not None:
+            username_part += f" (in response to {msg.referenced_message.author})"
+        prompt += f"\n{username_part}: {msg.content}"
+
+    try:
+        completion = await openai.Completion.acreate(
+            model=CONFIG.openai.response_completions_model,
+            max_tokens=CONFIG.openai.response_max_tokens,
+            prompt=prompt
+        )
+        resp = completion.choices[0].text
+        await plugin.bot.rest.create_message(event.channel_id, resp, reply=event.message_id)
+    except openai.OpenAIError as e:
+        logger.exception(f"Failed to automatically respond due to OpenAi Error: {e}")
+        pass
 
 
 @plugin.command
