@@ -13,9 +13,16 @@ plugin = lightbulb.Plugin("Info")
 
 
 @plugin.command
+@lightbulb.command("sunbot", "Commands related information about sunbot")
+@lightbulb.implements(lightbulb.commands.SlashCommandGroup)
+async def sunbot_group(ctx: lightbulb.context.SlashContext):
+    pass
+
+
+@sunbot_group.child
 @lightbulb.command("info", "Displays information about the bot")
-@lightbulb.implements(lightbulb.commands.SlashCommand)
-async def ping(ctx: lightbulb.context.SlashContext) -> None:
+@lightbulb.implements(lightbulb.commands.SlashSubCommand)
+async def info(ctx: lightbulb.context.SlashContext) -> None:
     proc = Process()
     with proc.oneshot():
         uptime = timedelta(seconds=time() - proc.create_time())
@@ -32,6 +39,22 @@ async def ping(ctx: lightbulb.context.SlashContext) -> None:
     embed.add_field("Command Handler", f"lightbulb v{lightbulb_version}")
     embed.add_field("Uptime", str(uptime))
     embed.add_field("Author", "<@116586345115287558>")
+    await ctx.respond(embed)
+
+
+@sunbot_group.child
+@lightbulb.command("plugins", "Shows the list of loaded plugins")
+@lightbulb.implements(lightbulb.commands.SlashSubCommand)
+async def list_plugins(ctx: lightbulb.context.SlashContext) -> None:
+    me = plugin.bot.get_me()
+    embed = hikari.Embed(
+        title=f"{me.username}'s Loaded Plugins",
+        color=hikari.Colour(0xF1C40F)
+    )
+    embed.set_thumbnail(me.avatar_url)
+
+    plugins = ctx.bot.plugins.keys()
+    embed.add_field("Plugins", "\n".join(plugins))
     await ctx.respond(embed)
 
 
