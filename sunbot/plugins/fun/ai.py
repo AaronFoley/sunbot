@@ -3,7 +3,7 @@ import random
 import time
 from datetime import timedelta
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Sequence
 from collections import defaultdict
 
 import aiohttp
@@ -17,12 +17,11 @@ from sunbot.config import CONFIG
 
 logger = logging.getLogger(__name__)
 plugin = lightbulb.Plugin("OpenAI")
-
-openai.api_key = CONFIG.openai.api_key
+client = openai.AsyncOpenAI(api_key=CONFIG.openai.api_key)
 
 
 @dataclass
-class OpenAiContext:
+class OpenAiRandomContext:
     """ Holds the context for auto reply feature
         Attributes:
             last_trigger (int): The unix timestamp of the last time a message was triggered
@@ -43,11 +42,56 @@ class OpenAiContext:
         self.last_context = 0
 
 
+def generate_messages(msgs: Sequence[Message]) -> List[Dict]:
+    """ Given a sequence of messages, generate the chat messgaes to send to OpenAI """
+
+    me: hikari.OwnUser = plugin.bot.get_me()
+    chat_messages = []
+
+    # Incldue the context messages from the config
+    for msg in CONFIG.openai.auto.system_context:
+        chat_messages.append({
+            "role": "system",
+            "content": msg,
+        })
+
+    for msg in msgs:
+        role = 'assistant' if msg.author.id == me.id else 'user'
+        content = msg.content
+
+        if role == 'user':
+            content = f'{msg.author.username}: {content}'
+
+        # If we are using a vision, we need to workout if there are any images included
+        if CONFIG.openai.auto.use_vision:
+            content = [
+                 {"type": "text", "text": content},
+            ]
+
+            for attach in msg.attachments:
+                if not attach.media_type.lower().startswith('image'):
+                    continue
+
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": attach.url,
+                    }
+                })
+
+        chat_messages.append({
+            "role": role,
+            "content": content
+        })
+
+    return chat_messages
+
+
 @tasks.task(s=10, auto_start=True)
 async def auto_repsonse():
     """ Do the auto response """
 
-    all_context: Dict[int, OpenAiContext] = plugin.bot.d.openai
+    all_context: Dict[int, OpenAiRandomContext] = plugin.bot.d.openai
 
     now = time.time()
 
@@ -62,19 +106,15 @@ async def auto_repsonse():
 
         logger.info(f'Generating reponse to {octx.target_message.id}')
 
-        prompt = CONFIG.openai.auto.prompt
-
-        for msg in octx.messages:
-            prompt += f"\n{msg.author.username}: {msg.content}"
+        chat_messages = generate_messages(octx.messages)
 
         try:
-            completion = await openai.Completion.acreate(
+            response = await client.chat.completions.create(
                 model=CONFIG.openai.auto.completions_model,
-                max_tokens=CONFIG.openai.auto.max_tokens,
-                prompt=prompt
+                max_tokens=CONFIG.openai.auto.random.max_tokens,
+                messages=chat_messages
             )
-            resp = completion.choices[0].text
-            await plugin.bot.rest.create_message(octx.target_message.channel_id, resp)
+            await plugin.bot.rest.create_message(octx.target_message.channel_id, response.choices[0].message.content)
         except openai.OpenAIError as e:
             logger.exception(f"Failed to automatically respond due to OpenAi Error: {e}")
             pass
@@ -87,16 +127,16 @@ async def auto_response_on_message(event: hikari.GuildMessageCreateEvent):
     """ Handler to listen for messages that could be automatically replied too """
     if event.is_bot or event.content is None:
         return
-    
+
     message: hikari.Message = event.message
     me: hikari.OwnUser = plugin.bot.get_me()
-    
+
     # If this message is a reply to us, or mentions us, then we aren't interested
     if (message.type == hikari.MessageType.REPLY and message.referenced_message.author.id == me.id) or \
        (me.id in message.user_mentions_ids):
         return
 
-    octx: OpenAiContext = plugin.bot.d.openai[event.guild_id]
+    octx: OpenAiRandomContext = plugin.bot.d.openai[event.guild_id]
     if octx.target_message is None:
         if len(message.content.split()) < CONFIG.openai.auto.min_length:
             return
@@ -131,41 +171,34 @@ async def on_mention_me(event: hikari.GuildMessageCreateEvent):
 
     if event.is_bot or event.content is None:
         return
-    
+
     message: hikari.Message = event.message
     me: hikari.OwnUser = plugin.bot.get_me()
-    
+
     # If this message isn't a reply to us, or mentions us, then we aren't interested
     if (message.type == hikari.MessageType.REPLY and message.referenced_message.author.id != me.id) or \
        (me.id not in message.user_mentions_ids):
         return
 
+    # If this is a reply to an earlier message, than use the original message
+    if (message.type == hikari.MessageType.REPLY):
+        message = message.referenced_message
+
     # Otherwise let's gather some context and reply to it
-    cufoff = message.created_at - timedelta(seconds=CONFIG.openai.response_context_time)
-    msgs = await plugin.bot.rest.fetch_messages(event.channel_id, after=cufoff)
+    cufoff = message.created_at - timedelta(seconds=CONFIG.openai.auto.reply.pre_context_time)
+    msgs = plugin.bot.rest.fetch_messages(event.channel_id, after=cufoff).limit(
+        CONFIG.openai.auto.reply.pre_context_limit
+    )
 
-    prompt = CONFIG.openai.response_prompt
-
-    # Include the original message if it's not included
-    if message.type == hikari.MessageType.REPLY and message.referenced_message is not None and \
-       message.referenced_message not in msgs:
-        prompt += f"\n{message.referenced_message.author.username}: {message.referenced_message}"
-
-    for msg in msgs:
-        # Give openai some context about who's replying to who
-        username_part = f"{msg.author.username}"
-        if msg.type == hikari.MessageType.REPLY and msg.referenced_message is not None:
-            username_part += f" (in response to {msg.referenced_message.author})"
-        prompt += f"\n{username_part}: {msg.content}"
+    chat_messages = generate_messages(await msgs)
 
     try:
-        completion = await openai.Completion.acreate(
-            model=CONFIG.openai.response_completions_model,
-            max_tokens=CONFIG.openai.response_max_tokens,
-            prompt=prompt
+        response = await client.chat.completions.create(
+            model=CONFIG.openai.auto.completions_model,
+            max_tokens=CONFIG.openai.auto.reply.max_tokens,
+            messages=chat_messages
         )
-        resp = completion.choices[0].text
-        await plugin.bot.rest.create_message(event.channel_id, resp, reply=event.message_id)
+        await plugin.bot.rest.create_message(event.channel_id, response.choices[0].message.content, reply=event.message_id)
     except openai.OpenAIError as e:
         logger.exception(f"Failed to automatically respond due to OpenAi Error: {e}")
         pass
@@ -198,7 +231,7 @@ async def askgpt(ctx: lightbulb.context.SlashContext, prompt: str):
             )
         )
         return
-    
+
     embed.description = completion.choices[0].text
     await ctx.edit_last_response(embed=embed)
 
@@ -242,7 +275,7 @@ async def genimage(ctx: lightbulb.context.SlashContext, prompt: str, number: int
 
     await ctx.edit_last_response(embed=None, content="...")
     embed.description = None
-   
+
     for image in image_data:
         msg = await resp.message()
         embed.set_image(image)
@@ -257,7 +290,7 @@ def load(bot: lightbulb.BotApp) -> None:
         return
 
     bot.add_plugin(plugin)
-    bot.d.openai: Dict[int, OpenAiContext] = defaultdict(lambda: OpenAiContext())
+    bot.d.openai: Dict[int, OpenAiRandomContext] = defaultdict(lambda: OpenAiRandomContext())
 
 
 def unload(bot: lightbulb.BotApp) -> None:
