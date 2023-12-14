@@ -100,8 +100,8 @@ async def auto_repsonse():
             return
 
         # If we are below both the timeout and last poll phase then wait some more
-        if now < (octx.last_trigger + CONFIG.openai.auto.context_timeout):
-            if now < (octx.last_context + CONFIG.openai.auto.context_poll):
+        if now < (octx.last_trigger + CONFIG.openai.auto.random.context_timeout):
+            if now < (octx.last_context + CONFIG.openai.auto.random.context_poll):
                 return
 
         logger.info(f'Generating reponse to {octx.target_message.id}')
@@ -138,13 +138,13 @@ async def auto_response_on_message(event: hikari.GuildMessageCreateEvent):
 
     octx: OpenAiRandomContext = plugin.bot.d.openai[event.guild_id]
     if octx.target_message is None:
-        if len(message.content.split()) < CONFIG.openai.auto.min_length:
+        if len(message.content.split()) < CONFIG.openai.auto.random.min_length:
             return
 
-        if octx.last_trigger > (int(time.time()) - CONFIG.openai.auto.cooldown):
+        if octx.last_trigger > (int(time.time()) - CONFIG.openai.auto.random.cooldown):
             return
 
-        if not random.random() < CONFIG.openai.auto.trigger_chance:
+        if not random.random() < CONFIG.openai.auto.random.trigger_chance:
             return
 
         logger.info(f'Triggered Automatic response on message: {event.message_id}: {message.content}')
@@ -153,7 +153,7 @@ async def auto_response_on_message(event: hikari.GuildMessageCreateEvent):
         octx.last_context = octx.last_trigger
         octx.target_message = message
 
-        cutoff = message.created_at - timedelta(seconds=CONFIG.openai.auto.pre_context_time)
+        cutoff = message.created_at - timedelta(seconds=CONFIG.openai.auto.random.pre_context_time)
         msgs = await plugin.bot.rest.fetch_messages(event.channel_id, after=cutoff)
         octx.messages.extend(msgs)
 
