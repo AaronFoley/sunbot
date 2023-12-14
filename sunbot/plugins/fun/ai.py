@@ -56,8 +56,16 @@ def generate_messages(msgs: Sequence[Message]) -> List[Dict]:
         })
 
     for msg in msgs:
+        if msg.content is None:
+            continue
+
         role = 'assistant' if msg.author.id == me.id else 'user'
         content = msg.content
+
+        # Replace any user mentions with thier username
+        if msg.user_mentions:
+            for user in msg.user_mentions.values():
+                content = content.replace(f'<@{user.id}>', f'@{user.username}')
 
         if role == 'user':
             content = f'{msg.author.username}: {content}'
