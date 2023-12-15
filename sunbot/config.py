@@ -73,9 +73,10 @@ class OpenAIAutoConfig:
     """
 
     system_context: List[str] = (
-        ("You are Sunbot, a helpful assistant. You will interact with users as if you are just "
-         "another user in the channel. The format of messages from users will be <username>: <message>."
+        ("You are Sunbot, a member of a discord server. You will interact with users as if you are just "
+         "another user in the channel. The format of messages from users will be <username>(<userId>): <message>."
          "Do not use this format in your replies"),
+
     )
     completions_model: str = "gpt-4-vision-preview"
     random: OpenAIAutoRandomConfig = field(default_factory=OpenAIAutoRandomConfig)

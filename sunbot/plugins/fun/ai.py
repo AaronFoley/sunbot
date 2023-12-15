@@ -68,7 +68,7 @@ def generate_messages(msgs: Sequence[Message]) -> List[Dict]:
                 content = content.replace(f'<@{user.id}>', f'@{user.username}')
 
         if role == 'user':
-            content = f'{msg.author.username}: {content}'
+            content = f'{msg.author.username}({msg.author.id}): {content}'
 
         # If we are using a vision, we need to workout if there are any images included
         if CONFIG.openai.auto.use_vision:
