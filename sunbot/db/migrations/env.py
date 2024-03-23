@@ -2,10 +2,10 @@ from logging.config import fileConfig
 
 import asyncio
 from alembic import context
-from sqlalchemy.engine import create_engine, Connection
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from sunbot.db.base import meta
+from sunbot.db.base import base_ormar_config
 from sunbot.db.models import load_all_models
 from sunbot.config import CONFIG
 
@@ -24,7 +24,7 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = meta
+target_metadata = base_ormar_config.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
