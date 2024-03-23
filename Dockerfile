@@ -7,7 +7,12 @@ RUN groupadd -g 442 app && \
     chown -R app:app /usr/src/app
 
 COPY . /usr/src/app
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN apt-get update && \
+    apt-get install -y gcc && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get autoremove --purge -y gcc && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 USER app
 ENTRYPOINT ["/usr/src/app/entrypoint.sh"]
