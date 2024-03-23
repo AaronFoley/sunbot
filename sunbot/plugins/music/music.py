@@ -1,11 +1,13 @@
 import lightbulb
 import hikari
-import lavaplay
 import logging
+import re
+import lavalink
 from datetime import timedelta
-from lavaplay.player import Player
 from lightbulb.ext import tasks
-from sunbot.bot import lavalink
+from sunbot.lavalink.voice import LavalinkVoice
+from sunbot.lavalink.utils import join_voice, check_in_voice, check_music_queued
+
 
 logger = logging.getLogger(__name__)
 plugin = lightbulb.Plugin("Music")
@@ -18,34 +20,24 @@ plugin = lightbulb.Plugin("Music")
 async def play_command(ctx: lightbulb.context.Context, query: str):
     """ Plays music """
 
-    if not (voice_state := ctx.bot.cache.get_voice_state(ctx.guild_id, ctx.author.id)):
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="Connect to a voice channel first.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
+    if not await join_voice(ctx):
         return
 
-    channel_id = voice_state.channel_id
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
 
-    bot_voice_state = ctx.bot.cache.get_voice_state(ctx.guild_id, ctx.bot.get_me().id)
-    if bot_voice_state and bot_voice_state.channel_id != channel_id:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="Sunbot is already busy in another voice channel ~ sorry!.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
-    elif not bot_voice_state:
-        lavalink.create_player(ctx.guild_id)
-        await ctx.bot.update_voice_state(ctx.guild_id, channel_id, self_deaf=True)
+    # Remove leading and trailing <>. <> may be used to suppress embedding links in Discord.
+    query = query.strip('<>')
 
-    player = lavalink.get_player(ctx.guild_id)
-    position = len(player.queue)
-    result = await lavalink.auto_search_tracks(query)
-    if not result:
+    # Check if the user input might be a URL. If it isn't, we can Lavalink do a YouTube search for it instead.
+    url_rx = re.compile(r'https?://(?:www\.)?.+')
+    if not url_rx.match(query):
+        query = f'ytsearch:{query}'
+
+    # Get the results for the query from Lavalink.
+    results = await player.node.get_tracks(query)
+
+    if not results or not results.tracks:
         await ctx.respond(
            embed=hikari.Embed(
                 description="No results found for your query",
@@ -53,65 +45,54 @@ async def play_command(ctx: lightbulb.context.Context, query: str):
             )
         )
         return
-    elif isinstance(result, lavaplay.TrackLoadFailed):
-        await ctx.respond(
-           embed=hikari.Embed(
-                description=f"Track load failed, try again later.\n ```{result.message}```",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
-    elif isinstance(result, lavaplay.PlayList):
-        player.add_to_queue(ctx.guild_id, result.tracks, ctx.author.id)
-        tracks = []
+
+    description: str
+    action: str
+    position: int = len(player.queue)
+
+    if results.load_type == lavalink.LoadType.PLAYLIST:
+        track_details = []
         total_duration = 0
-        for track in result.tracks:
-            tracks.append(f"🔹[{track.title}]({track.uri})")
-            total_duration += track.length
+        for track in results.tracks:
+            player.add(requester=ctx.author.id, track=track)
+            track_details.append(f"🔹[{track.title}]({track.uri})")
+            total_duration += track.duration
 
-        tracks = "\n".join(tracks)
+        action = 'Added Playlist to Queue'
         duration = timedelta(milliseconds=total_duration)
-        await ctx.respond(hikari.Embed(
-            description=f"{tracks}\n"
-                        f"Position: `{position}-{position + len(result.tracks)}` | Duration: `{str(duration)}`",
-            color=hikari.Colour(0x2ECC71)
-        ).set_author(name="Added Playlist to Queue", icon=ctx.author.avatar_url))
-        return
 
-    duration = timedelta(milliseconds=result[0].length)
-    await player.play(result[0], ctx.author.id)
+        description = f"{'\n'.join(track_details[:10])}\n"
+        if len(track_details) > 10:
+            description += f'+ {len(track_details) - 10} more\n'
+        description += f"Position: `{position}-{position + len(results.tracks)}` | Duration: `{str(duration)}`"
+    else:
+        track = results.tracks[0]
+        player.add(requester=ctx.author.id, track=track)
+        action = 'Added to Queue'
+        duration = timedelta(milliseconds=track.duration)
+        description = (
+            f"🔹[{track.title}]({track.uri})\n"
+            f"Position: `{position}` | Duration: `{str(duration)}`"
+        )
+
+    if not player.is_playing:
+        await player.play()
+
     await ctx.respond(hikari.Embed(
-        description=f"🔹[{result[0].title}]({result[0].uri})\n"
-                    f"Position: `{position}` | Duration: `{str(duration)}`",
+        description=description,
         color=hikari.Colour(0x2ECC71)
-    ).set_author(name="Added to Queue", icon=ctx.author.avatar_url))
-
-
-async def is_player_paused(player: Player) -> bool:
-    """ Given a player, check if it is paused """
-
-    resp = await player.rest.get_player(
-        session_id=player.node.session_id,
-        guild_id=player.guild_id
-    )
-    return resp.get('paused', False)
+    ).set_author(name=action, icon=ctx.author.avatar_url))
 
 
 @plugin.command()
+@lightbulb.add_checks(check_in_voice, check_music_queued)
 @lightbulb.command(name="pause", description="Pauses playing music")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def pause_command(ctx: lightbulb.context.Context):
-    player = lavalink.get_player(ctx.guild_id)
-    if not player or not player.queue:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="No tracks are currently playing.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
-    
-    if await is_player_paused(player):
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
+
+    if player.paused:
         await ctx.respond(
            embed=hikari.Embed(
                 description="It's already paused! :rage:",
@@ -119,28 +100,22 @@ async def pause_command(ctx: lightbulb.context.Context):
             )
         )
         return
-    await player.pause(True)
+
+    await player.set_pause(True)
     await ctx.respond(hikari.Embed(
         color=hikari.Colour(0x2ECC71)
     ).set_author(name="Paused the Music", icon=ctx.author.avatar_url))
 
 
 @plugin.command()
+@lightbulb.add_checks(check_in_voice, check_music_queued)
 @lightbulb.command(name="resume", description="Resumes playing music")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def resume_command(ctx: lightbulb.context.Context):
-    player = lavalink.get_player(ctx.guild_id)
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
 
-    if not player or not player.queue:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="No tracks are currently playing.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
-
-    if not await is_player_paused(player):
+    if not player.paused:
         await ctx.respond(
            embed=hikari.Embed(
                 description="It's already playing! :rage:",
@@ -149,25 +124,19 @@ async def resume_command(ctx: lightbulb.context.Context):
         )
         return
 
-    await player.pause(False)
+    await player.set_pause(False)
     await ctx.respond(hikari.Embed(
         color=hikari.Colour(0x2ECC71)
     ).set_author(name="Resumed the Music", icon=ctx.author.avatar_url))
 
 
 @plugin.command()
+@lightbulb.add_checks(check_in_voice, check_music_queued)
 @lightbulb.command(name="skip", description="Skip the current song")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def skip_command(ctx: lightbulb.context.Context):
-    player = lavalink.get_player(ctx.guild_id)
-    if not player or not player.queue:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="No tracks are currently playing.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
     current_track = player.queue[0]
     await player.skip()
     await ctx.respond(hikari.Embed(
@@ -177,23 +146,17 @@ async def skip_command(ctx: lightbulb.context.Context):
 
 
 @plugin.command()
+@lightbulb.add_checks(check_in_voice, check_music_queued)
 @lightbulb.command(name="queue", description="Displays the current songs in the queue")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def queue_command(ctx: lightbulb.context.Context):
-    player = lavalink.get_player(ctx.guild_id)
-    if not player or not player.queue:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="No tracks are currently playing.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
 
     song_queue = []
-    now_playing = player.queue[0]
+    now_playing = player.current
 
-    for track in player.queue[1:]:
+    for track in player.queue:
         duration = timedelta(milliseconds=track.length)
         song_queue.append(f"🔹`{str(duration)}` [{track.title}]({track.uri}) [<@{track.requester}>]")
 
@@ -210,21 +173,15 @@ async def queue_command(ctx: lightbulb.context.Context):
 
 
 @plugin.command()
+@lightbulb.add_checks(check_in_voice, check_music_queued)
 @lightbulb.command(name="nowplaying", description="Displays information about the song that is currently playing")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
 async def nowplaying_command(ctx: lightbulb.context.Context):
-    player = lavalink.get_player(ctx.guild_id)
-    if not player or not player.queue:
-        await ctx.respond(
-           embed=hikari.Embed(
-                description="No tracks are currently playing.",
-                color=hikari.Colour(0xd32f2f)
-            )
-        )
-        return
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    player = voice.player
 
-    now_playing = player.queue[0]
-    duration = timedelta(milliseconds=now_playing.length)
+    now_playing = player.current
+    duration = timedelta(milliseconds=now_playing.duration)
     await ctx.respond(hikari.Embed(
         title="Now Playing",
         description=f"[{now_playing.title}]({now_playing.uri})",
@@ -241,11 +198,24 @@ async def nowplaying_command(ctx: lightbulb.context.Context):
 
 
 @plugin.command()
-@lightbulb.command(name="stop", description="Stop command")
+@lightbulb.add_checks(check_in_voice)
+@lightbulb.command(name="clear", description="Clears the song queue")
 @lightbulb.implements(lightbulb.commands.SlashCommand)
-async def stop_command(ctx: lightbulb.context.Context):  
-    await plugin.bot.update_voice_state(ctx.guild_id, None)
-    player = lavalink.get_player(ctx.guild_id)
+async def clear_command(ctx: lightbulb.context.Context):
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    voice.player.queue.clear()
+    await ctx.respond(hikari.Embed(
+        color=hikari.Colour(0x2ECC71)
+    ).set_author(name="Cleared the Queue", icon=ctx.author.avatar_url))
+
+
+@plugin.command()
+@lightbulb.add_checks(check_in_voice)
+@lightbulb.command(name="stop", description="Stops playing music and leaves the voice channel")
+@lightbulb.implements(lightbulb.commands.SlashCommand)
+async def stop_command(ctx: lightbulb.context.Context):
+    voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
+    await voice.disconnect()
     await ctx.respond(hikari.Embed(
         color=hikari.Colour(0x2ECC71)
     ).set_author(name="Stopped playing music", icon=ctx.author.avatar_url))
@@ -255,19 +225,18 @@ async def stop_command(ctx: lightbulb.context.Context):
 async def disconnect_if_empty():
     """ Leave the voice channel if there are no other users in the channel """
 
-    for player in lavalink.get_players():
-        bot_voice_state = plugin.bot.cache.get_voice_state(player.guild_id, plugin.bot.get_me().id)
-        if not bot_voice_state:
+    for _, player in plugin.bot.lavalink.players.items():
+        voice = plugin.bot.voice.connections.get(player.guild_id)
+        if not voice:
             continue
-
-        voice_states = plugin.bot.cache.get_voice_states_view_for_channel(player.guild_id, bot_voice_state.channel_id)
+        voice_states = plugin.bot.cache.get_voice_states_view_for_channel(player.guild_id, voice.channel_id)
         if len(voice_states) == 1:
-            logger.info(f'Leaving voice channel {bot_voice_state.channel_id} in guild {player.guild_id} as it is empty')
-            await plugin.bot.update_voice_state(player.guild_id, None)
+            logger.info(f'Leaving voice channel {voice.channel_id} in guild {player.guild_id} as it is empty')
+            await voice.disconnect()
 
 
 def load(bot: lightbulb.BotApp) -> None:
-    if lavalink is None:
+    if bot.lavalink is None:
         logger.warning('Not loading Music plugin as lavalink is not setup')
         return
 

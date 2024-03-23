@@ -1,12 +1,13 @@
 import ormar
-from sunbot.db.base import BaseMeta
+from sunbot.db.base import base_ormar_config
 from sunbot.db.models.guild import Guild
 
 
 class PunishmentConfig(ormar.Model):
 
-    class Meta(BaseMeta):
-        tablename = "punishment_config"
+    ormar_config = base_ormar_config.copy(
+        tablename="punishment_config"
+    )
 
     id: int = ormar.Integer(primary_key=True, autoincrement=True)
     guild: Guild = ormar.ForeignKey(Guild, related_name="punishment", unique=True)
@@ -15,9 +16,10 @@ class PunishmentConfig(ormar.Model):
 
 class PunishmentSong(ormar.Model):
 
-    class Meta(BaseMeta):
-        tablename = "punishment_songs"
-        constraints = [ormar.UniqueColumns("name", "guild")]
+    ormar_config = base_ormar_config.copy(
+        tablename="punishment_songs",
+        constraints=[ormar.UniqueColumns("name", "guild")]
+    )
 
     id: int = ormar.Integer(primary_key=True, autoincrement=True)
     guild: Guild = ormar.ForeignKey(Guild, related_name="punishment_songs")

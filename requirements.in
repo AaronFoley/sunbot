@@ -2,7 +2,7 @@ hikari[speedups]
 hikari-lightbulb
 uvloop; os.name != 'nt'
 dataclass-wizard
-lavaplay.py
+lavalink
 psutil
 ormar[postgresql,orjson,sqlite]
 alembic

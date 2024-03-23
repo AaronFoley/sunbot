@@ -4,9 +4,9 @@ import logging
 import random
 import hikari
 import lightbulb
-import lavaplay
-from sunbot.bot import lavalink
+import lavalink
 from sunbot.db.models.punishment import PunishmentConfig, PunishmentSong
+from sunbot.lavalink.voice import LavalinkVoice
 
 logger = logging.getLogger(__name__)
 plugin = lightbulb.Plugin("Punishment")
@@ -162,7 +162,7 @@ async def punish_user(ctx: lightbulb.context.SlashContext, user: hikari.Interact
     if config is None or config.channel is None:
         await ctx.respond(
            embed=hikari.Embed(
-                description=f"Punishment channel config is not set!",
+                description="Punishment channel config is not set!",
                 color=hikari.Colour(0xd32f2f)
             )
         )
@@ -203,12 +203,12 @@ async def clear_punishment(ctx: lightbulb.context.SlashContext, user: Optional[h
 
         await ctx.respond(
             hikari.Embed(
-                description=f"Cleared All Punishments!",
+                description="Cleared All Punishments!",
                 color=hikari.Colour(0x2ECC71)
             )
         )
         return
-    
+
     if user.id not in ctx.bot.d.punishments[ctx.guild_id]:
         await ctx.respond(
            embed=hikari.Embed(
@@ -239,27 +239,32 @@ async def voice_server_update(event: hikari.VoiceStateUpdateEvent):
     if config is None or config.channel is None:
         return
 
-    voice_state = plugin.bot.cache.get_voice_state(event.guild_id, plugin.bot.get_me().id)
+    voice: LavalinkVoice = plugin.bot.voice.connections.get(event.guild_id)
     punishments = plugin.bot.d.punishments.get(event.guild_id, {})
-    
+
     # User Entering the punishment channel
     if event.state.channel_id == config.channel:
         # If sunbot is already busy, we can't do anything
-        if voice_state:
+        if voice:
             return
 
         songs = await PunishmentSong.objects.filter(guild=event.guild_id).all()
         if not songs:
             return
 
-        player = lavalink.create_player(event.guild_id)
-        await plugin.bot.update_voice_state(event.guild_id, config.channel, self_deaf=True)
+        voice = await LavalinkVoice.connect(
+            event.guild_id,
+            config.channel,
+            plugin.bot,
+            plugin.bot.lavalink,
+            (config.channel, plugin.bot.rest),
+        )
 
         song: PunishmentSong = random.choice(songs)
-        result = await lavalink.auto_search_tracks(song.url)
+        player = voice.player
 
-        await player.play(result[0])
-        await player.repeat(True)
+        result = await player.node.get_tracks(song.url)
+        await player.play(result.tracks[0])
 
     # User been punished entering a non-punishment channel
     elif event.state.user_id in punishments:
@@ -276,40 +281,37 @@ async def voice_server_update(event: hikari.VoiceStateUpdateEvent):
             pass
     # User leaving the punishment channel
     elif event.old_state is not None and event.old_state.channel_id == config.channel:
-        if voice_state and voice_state.channel_id == config.channel:
+        if voice and voice.channel_id == config.channel:
             if len(plugin.bot.cache.get_voice_states_view_for_channel(event.guild_id, config.channel)) == 1:
-                await plugin.bot.update_voice_state(event.guild_id, None)
+                await voice.disconnect()
 
 
-@lavalink.listen(lavaplay.TrackEndEvent)
-async def track_end_event(event: lavaplay.TrackEndEvent):
+async def track_end_event(event: lavalink.TrackEndEvent):
+
+    player = event.player
 
     # If we are not in a voice channel
-    voice_state = plugin.bot.cache.get_voice_state(event.guild_id, plugin.bot.get_me().id)
-    if not voice_state:
+    if not player:
         return
 
     # IF punishment hasn't been setup
-    config = await PunishmentConfig.objects.get_or_none(guild=event.guild_id)
+    config = await PunishmentConfig.objects.get_or_none(guild=player.guild_id)
     if config is None or config.channel is None:
         return
 
     # Or we are not in the punishment channel
-    if voice_state.channel_id != config.channel:
+    if player.channel_id != config.channel:
         return
 
     # Or if we have no songs to play
-    songs = await PunishmentSong.objects.filter(guild=event.guild_id).all()
+    songs = await PunishmentSong.objects.filter(guild=player.guild_id).all()
     if not songs:
         return
-    
-    player = lavalink.get_player(event.guild_id)
 
     song: PunishmentSong = random.choice(songs)
-    result = await lavalink.auto_search_tracks(song.url)
-    await player.play(result[0])
-    await player.repeat(True)
-    
+    result = await player.node.get_tracks(song.url)
+    await player.play(result.tracks[0])
+
 
 def load(bot: lightbulb.BotApp) -> None:
 
@@ -318,6 +320,7 @@ def load(bot: lightbulb.BotApp) -> None:
         return
 
     bot.add_plugin(plugin)
+    bot.lavalink.add_event_hook(track_end_event, event=lavalink.TrackEndEvent)
 
     # Setup temp storage of punishments
     bot.d.punishments: Dict[int, Dict[int, int]] = {}

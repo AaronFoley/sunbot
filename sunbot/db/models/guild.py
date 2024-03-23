@@ -1,10 +1,11 @@
 import ormar
-from sunbot.db.base import BaseMeta
+from sunbot.db.base import base_ormar_config
 
 
 class Guild(ormar.Model):
 
-    class Meta(BaseMeta):
-        tablename = "guilds"
+    ormar_config = base_ormar_config.copy(
+        tablename="guilds"
+    )
 
     id: int = ormar.BigInteger(primary_key=True)
