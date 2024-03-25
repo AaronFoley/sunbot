@@ -137,12 +137,19 @@ async def resume_command(ctx: lightbulb.context.Context):
 async def skip_command(ctx: lightbulb.context.Context):
     voice: LavalinkVoice = ctx.bot.voice.connections.get(ctx.guild_id)
     player = voice.player
-    current_track = player.queue[0]
+    current_track = player.current
     await player.skip()
-    await ctx.respond(hikari.Embed(
-        description=f"🔹[{current_track.title}]({current_track.uri})",
-        color=hikari.Colour(0x2ECC71)
-    ).set_author(name="Skipped the current Song", icon=ctx.author.avatar_url))
+    now_playing = player.current
+    await ctx.respond(
+        hikari.Embed(
+            description=f"[{current_track.title}]({current_track.uri})",
+            color=hikari.Colour(0x2ECC71)
+        ).set_author(
+            name="Skipped the current Song", icon=ctx.author.avatar_url
+        ).add_field(
+            name="Now Playing", value=f"[{now_playing.title}]({now_playing.uri})"
+        )
+    )
 
 
 @plugin.command()
@@ -156,9 +163,12 @@ async def queue_command(ctx: lightbulb.context.Context):
     song_queue = []
     now_playing = player.current
 
-    for track in player.queue:
-        duration = timedelta(milliseconds=track.length)
+    for track in player.queue[:10]:
+        duration = timedelta(milliseconds=track.duration)
         song_queue.append(f"🔹`{str(duration)}` [{track.title}]({track.uri}) [<@{track.requester}>]")
+
+    if len(player.queue) > 10:
+        song_queue += f'+ {len(player.current) - 10} more\n'
 
     if not song_queue:
         song_queue = ['Nothing queued']
